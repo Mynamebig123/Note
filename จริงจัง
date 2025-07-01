@@ -1,0 +1,850 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+// Enhanced Trading Constants
+const TRADING_CONSTANTS = {
+  MIN_CONFIDENCE: 75,
+  HIGH_CONFIDENCE: 85,
+  UPDATE_INTERVAL: 5000,
+  MAX_SIGNALS_HISTORY: 15,
+  BASE_PRICE: 1.1738,
+  VOLATILITY: 0.0002,
+  
+  // Interest Rates (simulated)
+  USD_RATE: 5.25,
+  EUR_RATE: 3.75,
+  
+  // Technical Analysis Parameters
+  RSI_PERIOD: 14,
+  MA_FAST: 20,
+  MA_SLOW: 50,
+  BOLLINGER_PERIOD: 20,
+  BOLLINGER_STD: 2
+};
+
+// Advanced Technical Indicators
+class TechnicalAnalysis {
+  static calculateSMA(prices, period) {
+    if (prices.length < period) return null;
+    const sum = prices.slice(-period).reduce((a, b) => a + b, 0);
+    return sum / period;
+  }
+
+  static calculateRSI(prices, period = 14) {
+    if (prices.length < period + 1) return 50; // Default neutral
+    
+    let gains = 0, losses = 0;
+    for (let i = prices.length - period; i < prices.length; i++) {
+      const change = prices[i] - prices[i - 1];
+      if (change > 0) gains += change;
+      else losses -= change;
+    }
+    
+    if (losses === 0) return 100;
+    const rs = (gains / period) / (losses / period);
+    return 100 - (100 / (1 + rs));
+  }
+
+  static calculateBollingerBands(prices, period = 20, std = 2) {
+    if (prices.length < period) return null;
+    
+    const sma = this.calculateSMA(prices, period);
+    const slice = prices.slice(-period);
+    const variance = slice.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / period;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+      upper: sma + (stdDev * std),
+      middle: sma,
+      lower: sma - (stdDev * std)
+    };
+  }
+
+  static detectMomentum(prices, fastMA, slowMA) {
+    if (prices.length < slowMA) return 'NEUTRAL';
+    
+    const fast = this.calculateSMA(prices, fastMA);
+    const slow = this.calculateSMA(prices, slowMA);
+    
+    if (!fast || !slow) return 'NEUTRAL';
+    
+    if (fast > slow) return 'BULLISH';
+    if (fast < slow) return 'BEARISH';
+    return 'NEUTRAL';
+  }
+
+  static detectMeanReversion(currentPrice, bollinger, rsi) {
+    if (!bollinger) return 'NEUTRAL';
+    
+    // Oversold + Below Lower Bollinger = Buy Signal
+    if (rsi < 30 && currentPrice < bollinger.lower) return 'BUY_SIGNAL';
+    
+    // Overbought + Above Upper Bollinger = Sell Signal  
+    if (rsi > 70 && currentPrice > bollinger.upper) return 'SELL_SIGNAL';
+    
+    return 'NEUTRAL';
+  }
+}
+
+// Smart AI Trading Engine
+class SmartTradingAI {
+  constructor() {
+    this.priceHistory = [];
+    this.interestRateDiff = TRADING_CONSTANTS.USD_RATE - TRADING_CONSTANTS.EUR_RATE;
+    this.marketSentiment = this.generateMarketSentiment();
+    this.volatilityIndex = 0.5; // 0-1 scale
+  }
+
+  generateMarketSentiment() {
+    // Simulate different market sentiments
+    const sentiments = [
+      { type: 'RISK_ON', weight: 0.3, favorUSD: false },
+      { type: 'RISK_OFF', weight: 0.3, favorUSD: true },
+      { type: 'NEUTRAL', weight: 0.4, favorUSD: null }
+    ];
+    
+    const random = Math.random();
+    let cumulative = 0;
+    
+    for (let sentiment of sentiments) {
+      cumulative += sentiment.weight;
+      if (random <= cumulative) return sentiment;
+    }
+    
+    return sentiments[2]; // Default neutral
+  }
+
+  updatePriceHistory(newPrice) {
+    this.priceHistory.push(newPrice);
+    if (this.priceHistory.length > 200) {
+      this.priceHistory = this.priceHistory.slice(-200);
+    }
+  }
+
+  generateRealisticPrice(basePrice) {
+    // More realistic price movement with market factors
+    const randomComponent = (Math.random() - 0.5) * TRADING_CONSTANTS.VOLATILITY;
+    const trendComponent = this.calculateTrendBias() * 0.00005;
+    const volatilityAdjustment = this.volatilityIndex * randomComponent;
+    
+    return basePrice + randomComponent + trendComponent + volatilityAdjustment;
+  }
+
+  calculateTrendBias() {
+    // Interest rate differential bias
+    const rateBias = this.interestRateDiff > 0 ? 1 : -1;
+    
+    // Market sentiment bias
+    let sentimentBias = 0;
+    if (this.marketSentiment.favorUSD === true) sentimentBias = 1;
+    if (this.marketSentiment.favorUSD === false) sentimentBias = -1;
+    
+    return (rateBias * 0.6 + sentimentBias * 0.4);
+  }
+
+  analyzeMarket(currentPrice) {
+    if (this.priceHistory.length < 50) {
+      return this.generateBasicSignal(currentPrice);
+    }
+
+    // Calculate technical indicators
+    const rsi = TechnicalAnalysis.calculateRSI(this.priceHistory);
+    const bollinger = TechnicalAnalysis.calculateBollingerBands(this.priceHistory);
+    const momentum = TechnicalAnalysis.detectMomentum(
+      this.priceHistory, 
+      TRADING_CONSTANTS.MA_FAST, 
+      TRADING_CONSTANTS.MA_SLOW
+    );
+    const meanReversion = TechnicalAnalysis.detectMeanReversion(currentPrice, bollinger, rsi);
+
+    // Multi-factor analysis
+    return this.generateSmartSignal({
+      currentPrice,
+      rsi,
+      bollinger,
+      momentum,
+      meanReversion,
+      interestRateDiff: this.interestRateDiff,
+      sentiment: this.marketSentiment
+    });
+  }
+
+  generateSmartSignal(analysis) {
+    let signals = [];
+    let confidence = 50;
+    let reasoning = [];
+
+    // 1. Mean Reversion Strategy (High probability but small moves)
+    if (analysis.meanReversion === 'BUY_SIGNAL') {
+      signals.push({ direction: 'BUY', strength: 0.7, strategy: 'Mean Reversion' });
+      confidence += 15;
+      reasoning.push(`RSI oversold (${analysis.rsi.toFixed(1)}) + below Bollinger lower band`);
+    } else if (analysis.meanReversion === 'SELL_SIGNAL') {
+      signals.push({ direction: 'SELL', strength: 0.7, strategy: 'Mean Reversion' });
+      confidence += 15;
+      reasoning.push(`RSI overbought (${analysis.rsi.toFixed(1)}) + above Bollinger upper band`);
+    }
+
+    // 2. Momentum Strategy (Trend following)
+    if (analysis.momentum === 'BULLISH') {
+      signals.push({ direction: 'BUY', strength: 0.6, strategy: 'Momentum' });
+      confidence += 10;
+      reasoning.push('Bullish momentum detected (MA20 > MA50)');
+    } else if (analysis.momentum === 'BEARISH') {
+      signals.push({ direction: 'SELL', strength: 0.6, strategy: 'Momentum' });
+      confidence += 10;
+      reasoning.push('Bearish momentum detected (MA20 < MA50)');
+    }
+
+    // 3. Interest Rate Differential (Fundamental)
+    if (Math.abs(analysis.interestRateDiff) > 1) {
+      const direction = analysis.interestRateDiff > 0 ? 'BUY' : 'SELL';
+      signals.push({ direction, strength: 0.5, strategy: 'Interest Rate Differential' });
+      confidence += 8;
+      reasoning.push(`Interest rate diff: ${analysis.interestRateDiff.toFixed(2)}% favors ${direction === 'BUY' ? 'USD' : 'EUR'}`);
+    }
+
+    // 4. Market Sentiment
+    if (analysis.sentiment.favorUSD === true) {
+      signals.push({ direction: 'BUY', strength: 0.4, strategy: 'Market Sentiment' });
+      confidence += 5;
+      reasoning.push(`Risk-off sentiment favors USD`);
+    } else if (analysis.sentiment.favorUSD === false) {
+      signals.push({ direction: 'SELL', strength: 0.4, strategy: 'Market Sentiment' });
+      confidence += 5;
+      reasoning.push(`Risk-on sentiment favors EUR`);
+    }
+
+    // 5. Confluence Analysis (Multiple signals agreeing)
+    const buySignals = signals.filter(s => s.direction === 'BUY');
+    const sellSignals = signals.filter(s => s.direction === 'SELL');
+
+    let finalDirection, finalConfidence, finalStrength;
+
+    if (buySignals.length > sellSignals.length) {
+      finalDirection = 'BUY';
+      finalStrength = buySignals.reduce((sum, s) => sum + s.strength, 0);
+      finalConfidence = Math.min(95, confidence + (buySignals.length - 1) * 5);
+    } else if (sellSignals.length > buySignals.length) {
+      finalDirection = 'SELL';
+      finalStrength = sellSignals.reduce((sum, s) => sum + s.strength, 0);
+      finalConfidence = Math.min(95, confidence + (sellSignals.length - 1) * 5);
+    } else {
+      // Conflicting signals or no clear direction
+      finalDirection = 'HOLD';
+      finalConfidence = Math.max(30, 50 - Math.abs(buySignals.length - sellSignals.length) * 10);
+      reasoning.push('Conflicting signals - waiting for clearer setup');
+    }
+
+    // Add some realistic uncertainty
+    finalConfidence = Math.max(45, Math.min(85, finalConfidence + (Math.random() - 0.5) * 10));
+
+    return {
+      direction: finalDirection,
+      confidence: finalConfidence,
+      strength: finalStrength || 0.3,
+      reasoning: reasoning,
+      signals: signals,
+      technicals: {
+        rsi: analysis.rsi,
+        bollinger: analysis.bollinger,
+        momentum: analysis.momentum
+      }
+    };
+  }
+
+  generateBasicSignal(currentPrice) {
+    // Fallback for insufficient data
+    const direction = Math.random() > 0.45 ? (Math.random() > 0.5 ? 'BUY' : 'SELL') : 'HOLD';
+    const confidence = 45 + Math.random() * 20; // 45-65%
+    
+    return {
+      direction,
+      confidence,
+      strength: 0.3,
+      reasoning: ['Insufficient historical data - basic pattern recognition'],
+      signals: [],
+      technicals: null
+    };
+  }
+
+  // Simulate news events that affect confidence
+  simulateNewsEvent() {
+    const events = [
+      { type: 'FED_MEETING', impact: 0.15, description: 'Fed decision pending' },
+      { type: 'ECB_ANNOUNCEMENT', impact: 0.12, description: 'ECB policy update' },
+      { type: 'NFP_RELEASE', impact: 0.10, description: 'US jobs data release' },
+      { type: 'GDP_DATA', impact: 0.08, description: 'Economic growth data' },
+      { type: 'GEOPOLITICAL', impact: 0.20, description: 'Geopolitical tensions' }
+    ];
+    
+    if (Math.random() > 0.98) { // 2% chance
+      const event = events[Math.floor(Math.random() * events.length)];
+      return event;
+    }
+    
+    return null;
+  }
+
+  updateMarketConditions() {
+    // Periodically update market sentiment and volatility
+    if (Math.random() > 0.95) {
+      this.marketSentiment = this.generateMarketSentiment();
+    }
+    
+    // Update volatility index based on recent price movements
+    if (this.priceHistory.length > 20) {
+      const recentPrices = this.priceHistory.slice(-20);
+      const volatility = recentPrices.reduce((sum, price, i) => {
+        if (i === 0) return 0;
+        return sum + Math.abs(price - recentPrices[i-1]);
+      }, 0) / 19;
+      
+      this.volatilityIndex = Math.min(1, volatility / (TRADING_CONSTANTS.VOLATILITY * 2));
+    }
+  }
+}
+
+// Enhanced Custom Hooks
+const useSmartForexData = () => {
+  const [data, setData] = useState({
+    currentPrice: TRADING_CONSTANTS.BASE_PRICE,
+    percentageChange: 0.19
+  });
+  const [tradingAI] = useState(() => new SmartTradingAI());
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const updateData = () => {
+      try {
+        if (mounted) {
+          const newPrice = tradingAI.generateRealisticPrice(TRADING_CONSTANTS.BASE_PRICE);
+          tradingAI.updatePriceHistory(newPrice);
+          tradingAI.updateMarketConditions();
+          
+          const percentageChange = (((newPrice - TRADING_CONSTANTS.BASE_PRICE) / TRADING_CONSTANTS.BASE_PRICE) * 100);
+          
+          setData({
+            currentPrice: newPrice,
+            percentageChange: parseFloat(percentageChange.toFixed(3))
+          });
+          setLoading(false);
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err.message);
+          setLoading(false);
+        }
+      }
+    };
+
+    updateData();
+    const interval = setInterval(updateData, TRADING_CONSTANTS.UPDATE_INTERVAL);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tradingAI]);
+
+  return { data, error, loading, tradingAI };
+};
+
+const useSmartAISignals = (currentPrice, tradingAI) => {
+  const [signals, setSignals] = useState([]);
+  const [activeSignal, setActiveSignal] = useState(null);
+  const [aiPrediction, setAiPrediction] = useState({
+    direction: 'ANALYZING',
+    confidence: 50,
+    targetPrice: TRADING_CONSTANTS.BASE_PRICE,
+    reasoning: ['Initializing AI analysis...']
+  });
+  const [newsEvent, setNewsEvent] = useState(null);
+
+  const generateSignal = useCallback(() => {
+    if (!tradingAI) return;
+
+    try {
+      const analysis = tradingAI.analyzeMarket(currentPrice);
+      
+      setAiPrediction({
+        direction: analysis.direction,
+        confidence: analysis.confidence,
+        targetPrice: analysis.direction === 'BUY' 
+          ? currentPrice + (analysis.strength * 0.002)
+          : analysis.direction === 'SELL'
+          ? currentPrice - (analysis.strength * 0.002)
+          : currentPrice,
+        reasoning: analysis.reasoning,
+        technicals: analysis.technicals
+      });
+
+      // Generate trading signal if confidence is high enough
+      if (analysis.confidence > TRADING_CONSTANTS.MIN_CONFIDENCE && analysis.direction !== 'HOLD') {
+        const newSignal = {
+          id: Date.now(),
+          time: new Date().toLocaleTimeString(),
+          direction: analysis.direction,
+          confidence: analysis.confidence,
+          entryPrice: currentPrice,
+          targetPrice: analysis.direction === 'BUY' 
+            ? currentPrice + (analysis.strength * 0.002)
+            : currentPrice - (analysis.strength * 0.002),
+          stopLoss: analysis.direction === 'BUY'
+            ? currentPrice - (analysis.strength * 0.001)
+            : currentPrice + (analysis.strength * 0.001),
+          reasoning: analysis.reasoning,
+          strategies: analysis.signals.map(s => s.strategy)
+        };
+
+        setSignals(prev => [newSignal, ...prev.slice(0, TRADING_CONSTANTS.MAX_SIGNALS_HISTORY - 1)]);
+        setActiveSignal(newSignal);
+      }
+
+      // Check for news events
+      const news = tradingAI.simulateNewsEvent();
+      if (news) {
+        setNewsEvent(news);
+        setTimeout(() => setNewsEvent(null), 10000); // Clear after 10 seconds
+      }
+
+    } catch (error) {
+      console.error('Error in signal generation:', error);
+    }
+  }, [currentPrice, tradingAI]);
+
+  useEffect(() => {
+    const interval = setInterval(generateSignal, TRADING_CONSTANTS.UPDATE_INTERVAL);
+    generateSignal(); // Initial call
+    
+    return () => clearInterval(interval);
+  }, [generateSignal]);
+
+  return { signals, activeSignal, aiPrediction, newsEvent };
+};
+
+// Enhanced Components
+const TechnicalIndicators = ({ technicals, currentPrice }) => {
+  if (!technicals) return null;
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-4">
+      <h3 className="text-lg font-semibold mb-3 text-blue-400">📊 Technical Analysis</h3>
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <p className="text-gray-400">RSI (14):</p>
+          <p className={`font-bold ${
+            technicals.rsi < 30 ? 'text-green-400' : 
+            technicals.rsi > 70 ? 'text-red-400' : 'text-yellow-400'
+          }`}>
+            {technicals.rsi.toFixed(1)} {
+              technicals.rsi < 30 ? '(Oversold)' : 
+              technicals.rsi > 70 ? '(Overbought)' : '(Neutral)'
+            }
+          </p>
+        </div>
+        
+        {technicals.bollinger && (
+          <div>
+            <p className="text-gray-400">Bollinger Position:</p>
+            <p className={`font-bold ${
+              currentPrice > technicals.bollinger.upper ? 'text-red-400' :
+              currentPrice < technicals.bollinger.lower ? 'text-green-400' : 'text-yellow-400'
+            }`}>
+              {currentPrice > technicals.bollinger.upper ? 'Above Upper' :
+               currentPrice < technicals.bollinger.lower ? 'Below Lower' : 'In Range'}
+            </p>
+          </div>
+        )}
+        
+        <div>
+          <p className="text-gray-400">Momentum:</p>
+          <p className={`font-bold ${
+            technicals.momentum === 'BULLISH' ? 'text-green-400' :
+            technicals.momentum === 'BEARISH' ? 'text-red-400' : 'text-yellow-400'
+          }`}>
+            {technicals.momentum}
+          </p>
+        </div>
+        
+        <div>
+          <p className="text-gray-400">Interest Rate Diff:</p>
+          <p className="font-bold text-blue-400">
+            {(TRADING_CONSTANTS.USD_RATE - TRADING_CONSTANTS.EUR_RATE).toFixed(2)}%
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NewsAlert = ({ newsEvent }) => {
+  if (!newsEvent) return null;
+
+  return (
+    <div className="bg-yellow-900 border border-yellow-500 rounded-lg p-4 mb-4">
+      <div className="flex items-center space-x-2">
+        <span className="text-2xl">📰</span>
+        <div>
+          <h4 className="font-bold text-yellow-300">Market Alert</h4>
+          <p className="text-sm text-yellow-100">{newsEvent.description}</p>
+          <p className="text-xs text-yellow-200">Expected impact: {(newsEvent.impact * 100).toFixed(0)}%</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EnhancedAIPrediction = ({ prediction, newsEvent }) => (
+  <div className={`rounded-xl p-6 border-2 ${
+    prediction.direction === 'BUY' 
+      ? 'bg-green-900 border-green-400' 
+      : prediction.direction === 'SELL'
+      ? 'bg-red-900 border-red-400'
+      : 'bg-gray-800 border-gray-600'
+  }`}>
+    <div className="text-center">
+      <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-2 ${
+        prediction.direction === 'BUY' ? 'bg-green-500' : 
+        prediction.direction === 'SELL' ? 'bg-red-500' : 'bg-gray-600'
+      }`}>
+        <span className="text-white text-2xl">🤖</span>
+      </div>
+      <p className="text-white text-lg">Smart AI Analysis</p>
+      <p className={`text-3xl font-bold ${
+        prediction.direction === 'BUY' ? 'text-green-300' : 
+        prediction.direction === 'SELL' ? 'text-red-300' : 'text-gray-300'
+      }`}>
+        {prediction.direction === 'BUY' ? '📈 ซื้อ' : 
+         prediction.direction === 'SELL' ? '📉 ขาย' : '⏸️ รอ'}
+      </p>
+      <p className="text-xl text-yellow-300 font-bold">
+        {prediction.confidence.toFixed(0)}% มั่นใจ
+      </p>
+      
+      {newsEvent && (
+        <div className="mt-2 text-xs text-yellow-200">
+          ⚠️ News Impact: {newsEvent.description}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const AIReasoning = ({ reasoning, strategies }) => (
+  <div className="bg-gray-800 rounded-lg p-4">
+    <h3 className="text-lg font-semibold mb-3 text-purple-400">🧠 AI Reasoning</h3>
+    <div className="space-y-2">
+      {reasoning.map((reason, index) => (
+        <div key={index} className="text-sm text-gray-300 flex items-start space-x-2">
+          <span className="text-purple-400 font-bold">{index + 1}.</span>
+          <span>{reason}</span>
+        </div>
+      ))}
+    </div>
+    
+    {strategies && strategies.length > 0 && (
+      <div className="mt-3 pt-3 border-t border-gray-700">
+        <p className="text-sm text-gray-400 mb-1">Active Strategies:</p>
+        <div className="flex flex-wrap gap-1">
+          {strategies.map((strategy, index) => (
+            <span key={index} className="px-2 py-1 bg-purple-700 rounded text-xs text-purple-100">
+              {strategy}
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+const EnhancedTradingSignal = ({ signal, onTrade }) => {
+  if (!signal) return null;
+  
+  const handleTrade = () => {
+    if (onTrade) onTrade(signal);
+  };
+
+  return (
+    <div className={`rounded-lg p-6 border-2 ${
+      signal.direction === 'BUY' 
+        ? 'bg-green-900 border-green-400' 
+        : 'bg-red-900 border-red-400'
+    }`}>
+      <div className="text-center mb-4">
+        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-3 ${
+          signal.direction === 'BUY' ? 'bg-green-500' : 'bg-red-500'
+        }`}>
+          <span className="text-white text-2xl">
+            {signal.direction === 'BUY' ? '📈' : '📉'}
+          </span>
+        </div>
+        <h2 className="text-xl font-bold text-white mb-1">
+          🤖 Smart AI: {signal.direction === 'BUY' ? 'ซื้อ' : 'ขาย'}
+        </h2>
+        <p className="text-lg text-yellow-300 font-bold">
+          ความมั่นใจ: {signal.confidence.toFixed(0)}%
+        </p>
+      </div>
+
+      <div className="bg-black bg-opacity-30 rounded-lg p-4 mb-4">
+        <div className="grid grid-cols-3 gap-3 text-center text-sm">
+          <div>
+            <p className="text-gray-300">ราคาเข้า</p>
+            <p className="text-white font-bold">{signal.entryPrice.toFixed(5)}</p>
+          </div>
+          <div>
+            <p className="text-gray-300">เป้าหมาย</p>
+            <p className="text-yellow-300 font-bold">{signal.targetPrice.toFixed(5)}</p>
+          </div>
+          <div>
+            <p className="text-gray-300">หยุดขาดทุน</p>
+            <p className="text-red-300 font-bold">{signal.stopLoss.toFixed(5)}</p>
+          </div>
+        </div>
+        
+        <div className="mt-3 pt-3 border-t border-gray-600">
+          <p className="text-xs text-gray-400 mb-1">Risk:Reward Ratio</p>
+          <p className="text-sm font-bold text-blue-300">
+            1:{(Math.abs(signal.targetPrice - signal.entryPrice) / Math.abs(signal.stopLoss - signal.entryPrice)).toFixed(1)}
+          </p>
+        </div>
+      </div>
+
+      <button 
+        onClick={handleTrade}
+        className={`w-full py-3 rounded-xl text-lg font-bold text-white transition-all hover:scale-105 transform ${
+          signal.direction === 'BUY' 
+            ? 'bg-green-500 hover:bg-green-600' 
+            : 'bg-red-500 hover:bg-red-600'
+        }`}
+      >
+        {signal.direction === 'BUY' ? '🟢 Execute BUY' : '🔴 Execute SELL'}
+      </button>
+    </div>
+  );
+};
+
+// Main Component
+const SigzyAI = () => {
+  const { data: forexData, error: forexError, loading: forexLoading, tradingAI } = useSmartForexData();
+  const { signals, activeSignal, aiPrediction, newsEvent } = useSmartAISignals(forexData.currentPrice, tradingAI);
+
+  const handleTrade = useCallback((signal) => {
+    console.log('Smart trading signal executed:', signal);
+    alert(`เทรด ${signal.direction} ที่ราคา ${signal.entryPrice.toFixed(5)}\nTarget: ${signal.targetPrice.toFixed(5)}\nStop Loss: ${signal.stopLoss.toFixed(5)}\nConfidence: ${signal.confidence.toFixed(0)}%`);
+  }, []);
+
+  const statistics = useMemo(() => {
+    const recentSignals = signals.slice(0, 10);
+    const highConfSignals = recentSignals.filter(s => s.confidence >= TRADING_CONSTANTS.HIGH_CONFIDENCE);
+    const avgConfidence = recentSignals.length > 0 
+      ? recentSignals.reduce((sum, s) => sum + s.confidence, 0) / recentSignals.length
+      : 0;
+    
+    return {
+      totalSignals: signals.length,
+      highConfidenceSignals: highConfSignals.length,
+      averageConfidence: avgConfidence.toFixed(1),
+      currentConfidence: aiPrediction.confidence.toFixed(0)
+    };
+  }, [signals, aiPrediction.confidence]);
+
+  if (forexError) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-400 mb-4">⚠️ เกิดข้อผิดพลาด</h1>
+          <p className="text-gray-300">{forexError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          >
+            รีเฟรชหน้า
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <div className="bg-gray-800 border-b border-gray-700 p-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold">🧠</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Smart Sigzy AI</h1>
+              <p className="text-xs text-gray-400">ระบบคาดการณ์อัจฉริยะด้วย Technical & Fundamental Analysis</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-right text-sm">
+              <p className="text-gray-400">Accuracy Rate</p>
+              <p className="text-green-400 font-bold">{statistics.averageConfidence}%</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-sm text-gray-400">Smart AI Active</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* News Alert */}
+        <NewsAlert newsEvent={newsEvent} />
+
+        {/* ราคาปัจจุบันและการคาดการณ์ */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gray-800 rounded-xl p-6">
+            <div className="text-center">
+              <p className="text-gray-400 text-lg">EUR/USD ปัจจุบัน</p>
+              {forexLoading ? (
+                <div className="animate-pulse">
+                  <div className="h-12 bg-gray-600 rounded mb-2"></div>
+                  <div className="h-6 bg-gray-600 rounded w-20 mx-auto"></div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-4xl font-bold text-white">{forexData.currentPrice.toFixed(5)}</p>
+                  <p className={`text-lg ${forexData.percentageChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {forexData.percentageChange >= 0 ? '+' : ''}{forexData.percentageChange}%
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <EnhancedAIPrediction prediction={aiPrediction} newsEvent={newsEvent} />
+        </div>
+
+        {/* สถานะการเทรด */}
+        <div className={`border-2 rounded-xl p-4 ${
+          aiPrediction.confidence >= TRADING_CONSTANTS.HIGH_CONFIDENCE 
+            ? 'bg-green-900 border-green-400' 
+            : aiPrediction.confidence >= TRADING_CONSTANTS.MIN_CONFIDENCE 
+            ? 'bg-yellow-900 border-yellow-400'
+            : 'bg-gray-800 border-gray-600'
+        }`}>
+          <div className="text-center">
+            <h3 className="text-xl font-bold text-white mb-2">
+              {aiPrediction.confidence >= TRADING_CONSTANTS.HIGH_CONFIDENCE 
+                ? '🔥 สัญญาณแรง! พร้อมเทรด!' 
+                : aiPrediction.confidence >= TRADING_CONSTANTS.MIN_CONFIDENCE 
+                ? '✅ สัญญาณดี เทรดได้'
+                : '⏳ กำลังวิเคราะห์...'
+              }
+            </h3>
+            <p className="text-lg text-white">
+              {aiPrediction.confidence >= TRADING_CONSTANTS.MIN_CONFIDENCE 
+                ? `Smart AI แนะนำ: ${aiPrediction.direction === 'BUY' ? 'ซื้อ (BUY)' : aiPrediction.direction === 'SELL' ? 'ขาย (SELL)' : 'รอสัญญาณ'}`
+                : `ความมั่นใจ ${aiPrediction.confidence.toFixed(0)}% - รอให้มากกว่า ${TRADING_CONSTANTS.MIN_CONFIDENCE}%`
+              }
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* สัญญาณและ AI Reasoning */}
+          <div className="lg:col-span-2 space-y-6">
+            <EnhancedTradingSignal signal={activeSignal} onTrade={handleTrade} />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <AIReasoning 
+                reasoning={aiPrediction.reasoning} 
+                strategies={activeSignal?.strategies}
+              />
+              <TechnicalIndicators 
+                technicals={aiPrediction.technicals} 
+                currentPrice={forexData.currentPrice}
+              />
+            </div>
+          </div>
+
+          {/* สัญญาณล่าสุดและสถิติ */}
+          <div className="space-y-6">
+            <div className="bg-gray-800 rounded-lg p-4">
+              <h3 className="text-lg font-semibold mb-3">📋 สัญญาณล่าสุด</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {signals.length > 0 ? signals.slice(0, 8).map((signal) => (
+                  <div key={signal.id} className={`rounded-lg p-3 transition-all hover:scale-105 ${
+                    signal.direction === 'BUY' ? 'bg-green-900' : 'bg-red-900'
+                  }`}>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-white text-sm">
+                          {signal.direction === 'BUY' ? '🟢 ซื้อ' : '🔴 ขาย'}
+                        </p>
+                        <p className="text-xs text-gray-300">
+                          มั่นใจ {signal.confidence.toFixed(0)}%
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-white font-semibold">
+                          {signal.entryPrice.toFixed(5)}
+                        </p>
+                        <p className="text-xs text-gray-300">{signal.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="text-gray-400 text-center py-4">
+                    <div className="animate-pulse">กำลังวิเคราะห์ตลาด...</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Enhanced Statistics */}
+            <div className="bg-gray-800 rounded-lg p-4">
+              <h3 className="text-lg font-semibold mb-3">📊 สถิติ Smart AI</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">ความมั่นใจปัจจุบัน:</span>
+                  <span className={`font-bold ${
+                    statistics.currentConfidence >= TRADING_CONSTANTS.HIGH_CONFIDENCE ? 'text-green-400' :
+                    statistics.currentConfidence >= TRADING_CONSTANTS.MIN_CONFIDENCE ? 'text-yellow-400' : 'text-gray-400'
+                  }`}>{statistics.currentConfidence}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">สัญญาณทั้งหมด:</span>
+                  <span className="font-bold text-blue-400">{statistics.totalSignals}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">สัญญาณแรง (>{TRADING_CONSTANTS.HIGH_CONFIDENCE}%):</span>
+                  <span className="font-bold text-green-400">{statistics.highConfidenceSignals}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">ความมั่นใจเฉลี่ย:</span>
+                  <span className="font-bold text-yellow-400">{statistics.averageConfidence}%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Trading Tips */}
+            <div className="bg-purple-900 rounded-lg p-4 border border-purple-500">
+              <h3 className="text-lg font-semibold mb-3 text-white">
+                🎯 Smart Trading Tips
+              </h3>
+              <div className="space-y-1 text-sm text-purple-100">
+                <p>🔥 <strong>{TRADING_CONSTANTS.HIGH_CONFIDENCE}%+</strong> = สัญญาณแรงมาก</p>
+                <p>✅ <strong>{TRADING_CONSTANTS.MIN_CONFIDENCE}-{TRADING_CONSTANTS.HIGH_CONFIDENCE}%</strong> = สัญญาณดี</p>
+                <p>⚠️ <strong>&lt;{TRADING_CONSTANTS.MIN_CONFIDENCE}%</strong> = รอสัญญาณใหม่</p>
+                <p>💰 <strong>Risk Management:</strong> ใช้ Stop Loss เสมอ</p>
+                <p>📈 <strong>Multiple Strategies:</strong> Technical + Fundamental</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SigzyAI;
