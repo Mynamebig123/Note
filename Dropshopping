@@ -1,0 +1,147 @@
+{
+  "name": "Dropshipping Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dropship",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f7ac6fff-2a7c-4d3c-a5d7-3bc8f1e4a567",
+      "name": "Webhook Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "dropship-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.product_url}}",
+              "operation": "contains",
+              "value2": "aliexpress"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Check if AliExpress",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [400, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.product_url}}",
+              "operation": "contains",
+              "value2": "1688"
+            }
+          ]
+        }
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Check if 1688",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.product_url}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Scrape Product Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ดึงข้อมูลสินค้าจาก HTML\nconst html = $input.all()[0].json.data;\nconst url = $input.all()[0].json.product_url;\n\n// ตรวจสอบประเภทเว็บไซต์\nfunction detectSiteType(url) {\n  const urlLower = url.toLowerCase();\n  if (urlLower.includes('aliexpress')) return 'aliexpress';\n  if (urlLower.includes('1688.com')) return '1688';\n  if (urlLower.includes('taobao.com')) return 'taobao';\n  if (urlLower.includes('dhgate.com')) return 'dhgate';\n  return 'unknown';\n}\n\n// แยกข้อมูลสินค้า\nfunction extractProductData(html, siteType) {\n  let title = '';\n  let price = 0;\n  let description = '';\n  let images = [];\n  \n  try {\n    // ใช้ regex เพื่อดึงข้อมูลจาก HTML\n    switch (siteType) {\n      case 'aliexpress':\n        // Title\n        const titleMatch = html.match(/<h1[^>]*>([^<]+)<\\/h1>/) || \n                          html.match(/\"title\":\"([^\"]+)\"/) ||\n                          html.match(/<title>([^<]+)<\\/title>/);\n        title = titleMatch ? titleMatch[1].replace(/[\\r\\n\\t]/g, ' ').trim() : 'AliExpress Product';\n        \n        // Price\n        const priceMatch = html.match(/\"price\":{\"value\":([\\d.]+)/) ||\n                          html.match(/\\$([\\d.]+)/) ||\n                          html.match(/([\\d.]+)\\s*USD/);\n        price = priceMatch ? parseFloat(priceMatch[1]) : 9.99;\n        \n        // Images\n        const imageMatches = html.match(/https:\\/\\/[^\"\\s]+\\.alicdn\\.com[^\"\\s]+\\.(jpg|jpeg|png|webp)/gi) || [];\n        images = [...new Set(imageMatches)].slice(0, 5);\n        \n        // Description\n        const descMatch = html.match(/<meta name=\"description\" content=\"([^\"]+)\"/) ||\n                         html.match(/\"description\":\"([^\"]+)\"/);\n        description = descMatch ? descMatch[1] : 'Quality product from AliExpress';\n        break;\n        \n      case '1688':\n        // Title for 1688\n        const title1688 = html.match(/<title>([^<]+)<\\/title>/) ||\n                         html.match(/\"title\":\"([^\"]+)\"/);\n        title = title1688 ? title1688[1].replace(/[\\r\\n\\t]/g, ' ').trim() : '1688 Product';\n        \n        // Price (usually in CNY)\n        const price1688 = html.match(/¥([\\d.]+)/) ||\n                         html.match(/([\\d.]+)\\s*元/) ||\n                         html.match(/\"price\":([\\d.]+)/);\n        price = price1688 ? parseFloat(price1688[1]) : 25.00;\n        \n        // Images\n        const images1688 = html.match(/https:\\/\\/[^\"\\s]+\\.1688\\.com[^\"\\s]+\\.(jpg|jpeg|png|webp)/gi) || [];\n        images = [...new Set(images1688)].slice(0, 5);\n        \n        description = 'Quality product from 1688';\n        break;\n        \n      default:\n        // Generic extraction\n        const genericTitle = html.match(/<title>([^<]+)<\\/title>/);\n        title = genericTitle ? genericTitle[1] : 'Imported Product';\n        price = 15.99;\n        images = ['https://via.placeholder.com/300x300?text=Product+Image'];\n        description = 'Quality imported product';\n    }\n    \n    // ทำความสะอาดข้อมูล\n    title = title.replace(/\\s+/g, ' ').trim();\n    description = description.replace(/\\s+/g, ' ').trim();\n    \n    return {\n      title: title,\n      originalPrice: price,\n      priceUSD: price,\n      description: description,\n      images: images,\n      siteType: siteType,\n      category: getCategoryFromTitle(title),\n      extractedAt: new Date().toISOString()\n    };\n    \n  } catch (error) {\n    console.error('Error extracting data:', error);\n    return {\n      title: 'สินค้านำเข้า',\n      originalPrice: 19.99,\n      priceUSD: 19.99,\n      description: 'สินค้าคุณภาพดี นำเข้าจากต่างประเทศ',\n      images: ['https://via.placeholder.com/300x300?text=Product'],\n      siteType: siteType,\n      category: 'สินค้าทั่วไป',\n      extractedAt: new Date().toISOString()\n    };\n  }\n}\n\n// หาหมวดหมู่จากชื่อสินค้า\nfunction getCategoryFromTitle(title) {\n  const titleLower = title.toLowerCase();\n  if (titleLower.includes('shirt') || titleLower.includes('cloth') || titleLower.includes('dress')) {\n    return 'เสื้อผ้า';\n  }\n  if (titleLower.includes('phone') || titleLower.includes('electronic') || titleLower.includes('gadget')) {\n    return 'อิเล็กทรอนิกส์';\n  }\n  if (titleLower.includes('beauty') || titleLower.includes('cosmetic') || titleLower.includes('skin')) {\n    return 'ความงาม';\n  }\n  if (titleLower.includes('bag') || titleLower.includes('wallet')) {\n    return 'กระเป๋า';\n  }\n  if (titleLower.includes('watch') || titleLower.includes('jewelry')) {\n    return 'เครื่องประดับ';\n  }\n  return 'สินค้าทั่วไป';\n}\n\nconst siteType = detectSiteType(url);\nconst productData = extractProductData(html, siteType);\n\nreturn { json: productData };"
+      },
+      "id": "d4e5f6g7-h8i9-0123-defg-456789012345",
+      "name": "Extract Product Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleTranslateApi",
+        "text": "={{$json.title}}",
+        "translateTo": "th"
+      },
+      "id": "e5f6g7h8-i9j0-1234-efgh-567890123456",
+      "name": "Translate Title",
+      "type": "n8n-nodes-base.googleTranslate",
+      "typeVersion": 1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleTranslateApi",
+        "text": "={{$json.description}}",
+        "translateTo": "th"
+      },
+      "id": "f6g7h8i9-j0k1-2345-fghi-678901234567",
+      "name": "Translate Description",
+      "type": "n8n-nodes-base.googleTranslate",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// รวมข้อมูลและคำนวณราคา\nconst productData = $input.all()[0].json;\nconst translatedTitle = $input.all()[1] ? $input.all()[1].json.text : productData.title;\nconst translatedDesc = $input.all()[2] ? $input.all()[2].json.text : productData.description;\n\n// ดึงการตั้งค่ากำไรจาก input\nconst profitMargin = $node[\"Webhook Start\"].json.profit_margin || 30;\nconst platform = $node[\"Webhook Start\"].json.platform || 'shopee';\n\n// แปลงราคาเป็นบาท (สมมติ 1 USD = 35 THB)\nconst exchangeRate = 35;\nconst costPriceTHB = Math.round(productData.priceUSD * exchangeRate);\nconst sellingPriceTHB = Math.round(costPriceTHB * (1 + profitMargin / 100));\n\n// สร้างชื่อสินค้าที่น่าสนใจ\nfunction enhanceTitle(title, category) {\n  const prefixes = {\n    'เสื้อผ้า': ['🔥 ฮิต!', '✨ สวยมาก!', '💎 พรีเมียม'],\n    'อิเล็กทรอนิกส์': ['⚡ ล้ำสมัย!', '🚀 เทคโนโลยีใหม่', '💯 คุณภาพดี'],\n    'ความงาม': ['🌟 ผิวสวย!', '💖 ธรรมชาติ', '✨ เกาหลีแท้'],\n    'กระเป๋า': ['👜 ทรงสวย!', '💎 หรูหรา', '🔥 ฮิตมาก'],\n    'เครื่องประดับ': ['💍 สวยหรู!', '✨ ดีไซน์ใหม่', '💎 พรีเมียม']\n  };\n  \n  const categoryPrefixes = prefixes[category] || ['🔥 ฮิต!', '✨ คุณภาพดี!', '💎 พรีเมียม'];\n  const randomPrefix = categoryPrefixes[Math.floor(Math.random() * categoryPrefixes.length)];\n  \n  return `${randomPrefix} ${title} 🚚 ส่งฟรี!`;\n}\n\n// สร้างรายละเอียดสำหรับแพลตฟอร์ม\nfunction generatePlatformContent(data, platform) {\n  const platformEmojis = {\n    shopee: '🛒',\n    lazada: '🛍️',\n    tiktok: '🎵',\n    facebook: '👍'\n  };\n  \n  const emoji = platformEmojis[platform] || '🛒';\n  \n  return `${emoji} ${data.enhancedTitle}\n\n💰 ราคาพิเศษ: ${data.sellingPrice} บาท\n🔥 ปกติ ${data.sellingPrice + 100} บาท\n\n📦 ${data.translatedDescription}\n\n✅ ของแท้ 100%\n🚚 ส่งฟรีทั่วไทย\n⚡ ส่งเร็วภายใน 24 ชม.\n💯 รับประกันคุณภาพ\n\n📏 ขนาด: ตามรูปที่แสดง\n🎨 สี: ตามที่เลือก\n🏷️ #${data.category.replace(' ', '')} #นำเข้า #คุณภาพดี #ราคาดี\n\n⭐ สั่งเลย! จำนวนจำกัด! ⭐`;\n}\n\n// สร้างข้อมูลสำหรับ CSV export\nfunction generateCSVData(data) {\n  return {\n    'ชื่อสินค้า': data.enhancedTitle,\n    'ราคาต้นทุน': data.costPrice,\n    'ราคาขาย': data.sellingPrice,\n    'กำไร': data.profit,\n    'หมวดหมู่': data.category,\n    'คำอธิบาย': data.translatedDescription,\n    'ลิงค์ต้นทาง': data.sourceUrl,\n    'รูปภาพ': data.images.join(';'),\n    'วันที่สร้าง': new Date().toLocaleString('th-TH')\n  };\n}\n\nconst enhancedTitle = enhanceTitle(translatedTitle, productData.category);\nconst platformContent = generatePlatformContent({\n  enhancedTitle,\n  sellingPrice: sellingPriceTHB,\n  translatedDescription: translatedDesc,\n  category: productData.category\n}, platform);\n\nconst result = {\n  // ข้อมูลพื้นฐาน\n  originalTitle: productData.title,\n  translatedTitle: translatedTitle,\n  enhancedTitle: enhancedTitle,\n  originalDescription: productData.description,\n  translatedDescription: translatedDesc,\n  \n  // ราคา\n  originalPriceUSD: productData.priceUSD,\n  costPrice: costPriceTHB,\n  sellingPrice: sellingPriceTHB,\n  profit: sellingPriceTHB - costPriceTHB,\n  profitMargin: profitMargin,\n  \n  // ข้อมูลอื่นๆ\n  category: productData.category,\n  images: productData.images,\n  siteType: productData.siteType,\n  sourceUrl: $node[\"Webhook Start\"].json.product_url,\n  \n  // เนื้อหาสำหรับแพลตฟอร์ม\n  platformContent: platformContent,\n  platform: platform,\n  \n  // ข้อมูลสำหรับ export\n  csvData: generateCSVData({\n    enhancedTitle,\n    costPrice: costPriceTHB,\n    sellingPrice: sellingPriceTHB,\n    profit: sellingPriceTHB - costPriceTHB,\n    category: productData.category,\n    translatedDescription: translatedDesc,\n    sourceUrl: $node[\"Webhook Start\"].json.product_url,\n    images: productData.images\n  }),\n  \n  // metadata\n  processedAt: new Date().toISOString(),\n  status: 'success'\n};\n\nreturn { json: result };"
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghij-789012345678",
+      "name": "Calculate Price & Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "requestMethod": "POST",
+        "url": "={{$node[\"Webhook Start\"].json.callback_url || 'https://httpbin.org/post'}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json)}}"
+      },
+      "id": "h8i9j0k1-l2m3-4567-hijk-890123456789",
+      "name": "Send Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{{\n  \"success\": true,\n  \"data\": $json,\n  \"message\": \"สินค้าประมวลผลเสร็จแล้ว\"\n}}}"
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijkl-901234567890",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,\n      "position": [1600, 300]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/products_{{new Date().getTime()}}.csv",\n        "options": {\n          \"delimiter\": \",\"\n        }\n      },\n      \"id\": \"j0k1l2m3-n4o5-6789-jklm-012345678901\",\n      \"name\": \"Export to CSV\",\n      \"type\": \"n8n-nodes-base.csv\",\n      \"typeVersion\": 1,\n      \"position\": [1400, 500]\n    }\n  ],\n  \"connections\": {\n    \"Webhook Start\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Scrape Product Page\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Scrape Product Page\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Extract Product Data\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Extract Product Data\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Translate Title\",\n            \"type\": \"main\",\n            \"index\": 0\n          },\n          {\n            \"node\": \"Translate Description\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Translate Title\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Calculate Price & Format\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Translate Description\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Calculate Price & Format\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    },\n    \"Calculate Price & Format\": {\n      \"main\": [\n        [\n          {\n            \"node\": \"Send Results\",\n            \"type\": \"main\",\n            \"index\": 0\n          },\n          {\n            \"node\": \"Response\",\n            \"type\": \"main\",\n            \"index\": 0\n          },\n          {\n            \"node\": \"Export to CSV\",\n            \"type\": \"main\",\n            \"index\": 0\n          }\n        ]\n      ]\n    }\n  },\n  \"pinData\": {},\n  \"settings\": {\n    \"executionOrder\": \"v1\"\n  },\n  \"staticData\": null,\n  \"tags\": [],\n  \"triggerCount\": 0,\n  \"updatedAt\": \"2024-12-07T10:00:00.000Z\",\n  \"versionId\": \"1\"\n}
